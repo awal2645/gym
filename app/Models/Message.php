@@ -15,6 +15,7 @@ class Message extends Model
         'to_user_id',
         'body',
         'read_at',
+        'reminder_sent_at',
         'file_path',
         'file_name',
         'file_type',
@@ -22,6 +23,7 @@ class Message extends Model
 
     protected $casts = [
         'read_at' => 'datetime',
+        'reminder_sent_at' => 'datetime',
     ];
 
     protected $appends = [

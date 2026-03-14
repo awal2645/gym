@@ -52,6 +52,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/chat/conversations/me', [ChatController::class, 'getConversations']);
     Route::get('/chat/messages/me', [ChatController::class, 'getMessages']);
     Route::post('/chat/messages', [ChatController::class, 'sendMessage']);
+    Route::post('/chat/messages/{message}/trigger-reminder', [ChatController::class, 'triggerReminder']);
     // Chunked upload for large files (e.g. 1GB)
     Route::post('/chat/upload/init', [ChatController::class, 'uploadInit']);
     Route::post('/chat/upload/chunk', [ChatController::class, 'uploadChunk']);
@@ -72,6 +73,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/chat/users', [AdminChatController::class, 'getUsers']);
         Route::get('/chat/messages/{userId}', [AdminChatController::class, 'getMessages']);
         Route::post('/chat/messages/{userId}', [AdminChatController::class, 'sendMessage']);
+        Route::post('/chat/reminder/{message}', [AdminChatController::class, 'triggerReminder']);
         Route::post('/chat/upload/{userId}/init', [AdminChatController::class, 'uploadInit']);
         Route::post('/chat/upload/{userId}/chunk', [AdminChatController::class, 'uploadChunk']);
         Route::post('/chat/upload/{userId}/finalize', [AdminChatController::class, 'uploadFinalize']);

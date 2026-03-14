@@ -9,6 +9,7 @@ use App\Services\GoogleDriveService;
 use Illuminate\Http\Request;
 use App\Events\MessageSent;
 use App\Jobs\SendNoReplyReminderJob;
+use App\Services\NoReplyReminderService;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -188,8 +189,8 @@ class ChatController extends Controller
         // Broadcast the message
         broadcast(new MessageSent($message))->toOthers();
 
-        // If recipient doesn't reply within 10 min, send reminder email
-        SendNoReplyReminderJob::dispatch($message)->delay(now()->addSeconds(30));
+        // Queue fallback: send reminder after 1 min if no reply
+        SendNoReplyReminderJob::dispatch($message)->delay(now()->addMinutes(1));
 
         return response()->json($message, 201);
     }
@@ -291,9 +292,23 @@ class ChatController extends Controller
         $message->load(['fromUser', 'toUser']);
         broadcast(new MessageSent($message))->toOthers();
 
-        SendNoReplyReminderJob::dispatch($message)->delay(now()->addSeconds(30));
+        SendNoReplyReminderJob::dispatch($message)->delay(now()->addMinutes(1));
 
         return response()->json($message, 201);
+    }
+
+    /**
+     * Trigger no-reply reminder email (frontend calls after 1 min).
+     * Only the message sender can trigger; prevents duplicate via reminder_sent_at.
+     */
+    public function triggerReminder(Request $request, Message $message)
+    {
+        if ($message->from_user_id !== $request->user()->id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $sent = NoReplyReminderService::sendIfNeeded($message);
+        return response()->json(['sent' => $sent]);
     }
 
     /**

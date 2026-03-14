@@ -12,7 +12,8 @@ export const adminApi = {
     },
     chat: {
         getUsers: () => api.get('/admin/chat/users'),
-        getMessages: (userId) => api.get(`/admin/chat/messages/${userId}`),
+        getMessages: (userId, params = {}) => api.get(`/admin/chat/messages/${userId}`, { params }),
+        triggerReminder: (messageId) => api.post(`/admin/chat/reminder/${messageId}`),
         sendMessage: (userId, data, onUploadProgress) => {
             // If data contains a file, use FormData
             if (data instanceof FormData) {

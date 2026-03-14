@@ -29,6 +29,8 @@ export default function AdminChat() {
     const [users, setUsers] = useState([]);
     const [selectedUser, setSelectedUser] = useState(null);
     const [messages, setMessages] = useState([]);
+    const [hasMoreMessages, setHasMoreMessages] = useState(false);
+    const [loadingMore, setLoadingMore] = useState(false);
     const [newMessage, setNewMessage] = useState('');
     const [selectedFile, setSelectedFile] = useState(null);
     const [filePreview, setFilePreview] = useState(null);
@@ -42,6 +44,7 @@ export default function AdminChat() {
     const channelRef = useRef(null);
     const fileInputRef = useRef(null);
     const selectedUserRef = useRef(selectedUser);
+    const reminderTimersRef = useRef([]);
     const [videoModal, setVideoModal] = useState(null);
     selectedUserRef.current = selectedUser;
 
@@ -73,7 +76,16 @@ export default function AdminChat() {
     }, []);
 
     useEffect(() => {
+        return () => {
+            reminderTimersRef.current.forEach(clearTimeout);
+            reminderTimersRef.current = [];
+        };
+    }, []);
+
+    useEffect(() => {
         if (selectedUser) {
+            setMessages([]);
+            setHasMoreMessages(false);
             loadMessages(selectedUser.id);
         }
     }, [selectedUser]);
@@ -135,13 +147,30 @@ export default function AdminChat() {
     };
 
     const loadMessages = (userId) => {
-        adminApi.chat.getMessages(userId)
+        adminApi.chat.getMessages(userId, { limit: 10 })
             .then((response) => {
                 setMessages(response.data.messages || []);
+                setHasMoreMessages(response.data.has_more ?? false);
             })
             .catch((error) => {
                 console.error('Error loading messages:', error);
             });
+    };
+
+    const loadMoreMessages = () => {
+        if (!selectedUser || loadingMore || !hasMoreMessages || messages.length === 0) return;
+        const oldestId = messages[0].id;
+        setLoadingMore(true);
+        adminApi.chat.getMessages(selectedUser.id, { limit: 10, before_id: oldestId })
+            .then((response) => {
+                const older = response.data.messages || [];
+                setMessages((prev) => [...older, ...prev]);
+                setHasMoreMessages(response.data.has_more ?? false);
+            })
+            .catch((error) => {
+                console.error('Error loading more messages:', error);
+            })
+            .finally(() => setLoadingMore(false));
     };
 
     const formatFileSize = (bytes) => {
@@ -245,6 +274,13 @@ export default function AdminChat() {
                 fileInputRef.current.value = '';
             }
             loadUsers(); // Refresh unread counts
+            // Frontend: trigger reminder email after 1 min if no reply
+            const timerId = setTimeout(() => {
+                adminApi.chat.triggerReminder(response.id)
+                    .then((res) => { if (res?.data?.sent) console.log('[AdminChat] Reminder email triggered'); })
+                    .catch((err) => console.warn('[AdminChat] Reminder trigger failed:', err?.response?.data || err.message));
+            }, 60000);
+            reminderTimersRef.current.push(timerId);
         } catch (error) {
             console.error('Error sending message:', error);
             alert('Error sending message. Please try again.');
@@ -365,13 +401,26 @@ export default function AdminChat() {
                                     </div>
                                 </div>
 
-                                <div className="flex-1 min-h-0 overflow-y-auto px-6 mb-4 space-y-4">
+                                <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-6 py-4 space-y-4">
                                     {messages.length === 0 ? (
                                         <div className="text-center text-white/50 py-8">
                                             No messages yet.
                                         </div>
                                     ) : (
-                                        messages.map((message) => {
+                                        <>
+                                        {hasMoreMessages && (
+                                            <div className="flex justify-center py-3">
+                                                <button
+                                                    type="button"
+                                                    onClick={loadMoreMessages}
+                                                    disabled={loadingMore}
+                                                    className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 text-white text-sm font-medium transition-colors disabled:opacity-50"
+                                                >
+                                                    {loadingMore ? 'Loading...' : 'Load more'}
+                                                </button>
+                                            </div>
+                                        )}
+                                        {messages.map((message) => {
                                             const isOwn = message.from_user_id === user.id;
                                             const senderPicUrl = message.from_user?.profile_picture_url;
                                             return (
@@ -419,6 +468,7 @@ export default function AdminChat() {
                                                                         <img
                                                                             src={message.file_url || `/storage/${message.file_path}`}
                                                                             alt={message.file_name || 'Image'}
+                                                                            loading="lazy"
                                                                             className="max-w-full max-h-72 w-full object-cover rounded-lg cursor-pointer hover:opacity-95 transition-opacity"
                                                                         />
                                                                     </a>
@@ -484,6 +534,8 @@ export default function AdminChat() {
                                                 </div>
                                             );
                                         })
+                                        }
+                                    </>
                                     )}
                                     <div ref={messagesEndRef} />
                                 </div>
@@ -550,7 +602,8 @@ export default function AdminChat() {
                                         </div>
                                     </div>
                                 )}
-                                <form onSubmit={handleSend} className="shrink-0 flex gap-1.5 sm:gap-2 flex-nowrap px-4 sm:px-6 pb-4 sm:pb-6">
+                                <div className="shrink-0 border-t border-white/10 px-4 sm:px-6 py-4 bg-black/30">
+                                <form onSubmit={handleSend} className="flex gap-1.5 sm:gap-2 flex-nowrap">
                                     <input
                                         ref={fileInputRef}
                                         type="file"
@@ -580,6 +633,7 @@ export default function AdminChat() {
                                         {uploading ? `Uploading ${uploadProgress}%...` : sending ? 'Sending...' : 'Send'}
                                     </Button>
                                 </form>
+                                </div>
                             </Card>
                         ) : (
                             <Card>

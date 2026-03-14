@@ -44,6 +44,7 @@ export default function Chat() {
     const pusherRef = useRef(null);
     const channelRef = useRef(null);
     const fileInputRef = useRef(null);
+    const reminderTimersRef = useRef([]);
 
     const notifyIncomingMessage = (msg) => {
         try {
@@ -73,6 +74,13 @@ export default function Chat() {
             setTimeout(() => setSuccessMessage(''), 5000);
         }
     }, [successMessage]);
+
+    useEffect(() => {
+        return () => {
+            reminderTimersRef.current.forEach(clearTimeout);
+            reminderTimersRef.current = [];
+        };
+    }, []);
 
     useEffect(() => {
         // Load messages
@@ -228,6 +236,13 @@ export default function Chat() {
             if (fileInputRef.current) {
                 fileInputRef.current.value = '';
             }
+            // Frontend: trigger reminder email after 1 min if no reply
+            const timerId = setTimeout(() => {
+                chatApi.triggerReminder(response.id)
+                    .then((res) => { if (res?.data?.sent) console.log('[Chat] Reminder email triggered'); })
+                    .catch((err) => console.warn('[Chat] Reminder trigger failed:', err?.response?.data || err.message));
+            }, 60000);
+            reminderTimersRef.current.push(timerId);
         } catch (error) {
             console.error('Error sending message:', error);
             alert('Error sending message. Please try again.');
@@ -265,7 +280,7 @@ export default function Chat() {
                         )}
 
                         <Card className="flex flex-col flex-1 min-h-0 p-0 overflow-hidden">
-                            <div className="flex-1 min-h-0 overflow-y-auto px-6 mb-4 space-y-4">
+                            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-6 py-4 space-y-4">
                                 {messages.length === 0 ? (
                                     <div className="text-center text-white/50 py-8">
                                         No messages yet. Start the conversation!
@@ -357,8 +372,9 @@ export default function Chat() {
                                 <div ref={messagesEndRef} />
                             </div>
 
+                            <div className="shrink-0 border-t border-white/10 px-4 sm:px-6 py-4 bg-black/30">
                             {selectedFile && (
-                                <div className="shrink-0 flex justify-end mb-3 px-6">
+                                <div className="flex justify-end mb-3">
                                     <div className="max-w-[85vw] sm:max-w-xs lg:max-w-md px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 text-white border-2 border-blue-400/50 shadow-lg">
                                         <p className="text-sm font-semibold mb-2 opacity-90">Preview</p>
                                         {filePreviewType === 'video' ? (
@@ -419,7 +435,7 @@ export default function Chat() {
                                     </div>
                                 </div>
                             )}
-                            <form onSubmit={handleSend} className="shrink-0 flex gap-1.5 sm:gap-2 flex-nowrap px-4 sm:px-6 pb-4 sm:pb-6">
+                            <form onSubmit={handleSend} className="flex gap-1.5 sm:gap-2 flex-nowrap">
                                 <input
                                     ref={fileInputRef}
                                     type="file"
@@ -449,6 +465,7 @@ export default function Chat() {
                                     {uploading ? `Uploading ${uploadProgress}%...` : sending ? 'Sending...' : 'Send'}
                                 </Button>
                             </form>
+                            </div>
                             {uploading && (selectedFile?.type?.startsWith('video/') || ['mp4', 'webm', 'mkv', 'mov', 'avi', 'm4v', 'ogv', '3gp'].includes((selectedFile?.name || '').split('.').pop()?.toLowerCase())) && (
                                 <div className="shrink-0 mt-4 mx-6 mb-6 p-4 rounded-xl bg-blue-500/10 border border-blue-500/30">
                                     <p className="text-white font-medium">Hang tight, your video is uploading.</p>

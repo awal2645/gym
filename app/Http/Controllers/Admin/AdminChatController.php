@@ -10,6 +10,7 @@ use App\Services\GoogleDriveService;
 use Illuminate\Http\Request;
 use App\Events\MessageSent;
 use App\Jobs\SendNoReplyReminderJob;
+use App\Services\NoReplyReminderService;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -63,7 +64,8 @@ class AdminChatController extends Controller
     }
 
     /**
-     * Get messages with a specific user (admin).
+     * Get messages with a specific user (admin). Paginated: 10 per request.
+     * ?limit=10&before_id=123 for older messages.
      */
     public function getMessages(Request $request, $userId)
     {
@@ -74,16 +76,33 @@ class AdminChatController extends Controller
             return response()->json(['message' => 'Cannot chat with admin'], 403);
         }
 
-        $messages = Message::where(function ($query) use ($user, $admin) {
-            $query->where('from_user_id', $user->id)
-                ->where('to_user_id', $admin->id);
-        })->orWhere(function ($query) use ($user, $admin) {
-            $query->where('from_user_id', $admin->id)
-                ->where('to_user_id', $user->id);
-        })
-            ->with(['fromUser', 'toUser'])
-            ->orderBy('created_at', 'asc')
+        $limit = (int) $request->get('limit', 10);
+        $limit = min(max($limit, 1), 50);
+        $beforeId = $request->get('before_id');
+
+        $query = Message::where(function ($q) use ($user, $admin) {
+            $q->where('from_user_id', $user->id)->where('to_user_id', $admin->id);
+        })->orWhere(function ($q) use ($user, $admin) {
+            $q->where('from_user_id', $admin->id)->where('to_user_id', $user->id);
+        });
+
+        if ($beforeId) {
+            $beforeMessage = Message::find($beforeId);
+            if ($beforeMessage) {
+                $query->where('created_at', '<', $beforeMessage->created_at);
+            }
+        }
+
+        $messages = $query->with(['fromUser', 'toUser'])
+            ->orderBy('created_at', 'desc')
+            ->limit($limit + 1)
             ->get();
+
+        $hasMore = $messages->count() > $limit;
+        if ($hasMore) {
+            $messages->pop(); // Remove the extra one
+        }
+        $messages = $messages->reverse()->values();
 
         // Mark messages as read
         Message::where('from_user_id', $user->id)
@@ -91,7 +110,10 @@ class AdminChatController extends Controller
             ->whereNull('read_at')
             ->update(['read_at' => now()]);
 
-        return response()->json(['messages' => $messages]);
+        return response()->json([
+            'messages' => $messages,
+            'has_more' => $hasMore,
+        ]);
     }
 
     /**
@@ -192,9 +214,22 @@ class AdminChatController extends Controller
         // Broadcast the message
         broadcast(new MessageSent($message))->toOthers();
 
-        SendNoReplyReminderJob::dispatch($message)->delay(now()->addSeconds(30));
+        SendNoReplyReminderJob::dispatch($message)->delay(now()->addMinutes(1));
 
         return response()->json($message, 201);
+    }
+
+    /**
+     * Trigger no-reply reminder email (frontend calls after 1 min).
+     */
+    public function triggerReminder(Request $request, Message $message)
+    {
+        if ($message->from_user_id !== $request->user()->id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $sent = NoReplyReminderService::sendIfNeeded($message);
+        return response()->json(['sent' => $sent]);
     }
 
     /**
@@ -294,7 +329,7 @@ class AdminChatController extends Controller
         $message->load(['fromUser', 'toUser']);
         broadcast(new MessageSent($message))->toOthers();
 
-        SendNoReplyReminderJob::dispatch($message)->delay(now()->addSeconds(30));
+        SendNoReplyReminderJob::dispatch($message)->delay(now()->addMinutes(1));
 
         return response()->json($message, 201);
     }
