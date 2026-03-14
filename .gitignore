@@ -19,6 +19,7 @@
 /storage/pail
 /storage/app/google-drive-credentials.json
 /storage/app/gym-joye*.json
+/public/gym-joye*.json
 /storage/app/chunk-uploads
 /vendor
 Homestead.json
