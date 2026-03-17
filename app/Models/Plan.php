@@ -15,12 +15,14 @@ class Plan extends Model
         'description',
         'features',
         'active',
+        'best_value',
     ];
 
     protected $casts = [
         'price' => 'decimal:2',
         'features' => 'array',
         'active' => 'boolean',
+        'best_value' => 'boolean',
     ];
 
     /**

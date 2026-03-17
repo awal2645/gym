@@ -6,6 +6,7 @@ import Card from '../components/Card';
 import Button from '../components/Button';
 import { plansApi } from '../api/plans';
 import { checkoutApi } from '../api/checkout';
+import { configApi } from '../api/config';
 
 export default function Checkout() {
     const { planId } = useParams();
@@ -13,8 +14,9 @@ export default function Checkout() {
     const [plan, setPlan] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [capturing, setCapturing] = useState(false);
     const [orderData, setOrderData] = useState(null);
-    const [paypalClientId] = useState(import.meta.env.VITE_PAYPAL_CLIENT_ID || '');
+    const [paypalConfig, setPaypalConfig] = useState({ clientId: '', active: false });
 
     useEffect(() => {
         plansApi.getById(planId)
@@ -28,6 +30,18 @@ export default function Checkout() {
             });
     }, [planId]);
 
+    useEffect(() => {
+        configApi.getPaypal()
+            .then((response) => {
+                const d = response.data;
+                setPaypalConfig({
+                    clientId: d?.client_id || d?.clientId || '',
+                    active: d?.active ?? true,
+                });
+            })
+            .catch(() => setPaypalConfig({ clientId: import.meta.env.VITE_PAYPAL_CLIENT_ID || '', active: false }));
+    }, []);
+
     const createOrder = async () => {
         try {
             const response = await checkoutApi.createOrder({ plan_id: parseInt(planId) });
@@ -40,18 +54,38 @@ export default function Checkout() {
     };
 
     const onApprove = async (data) => {
+        if (!orderData?.purchase_id) {
+            setError('Session expired. Please try again.');
+            return;
+        }
+        setCapturing(true);
+        setError('');
         try {
+            const orderId = data.orderID || data.paymentID;
+            if (!orderId) {
+                setError('Invalid payment response from PayPal.');
+                setCapturing(false);
+                return;
+            }
             const response = await checkoutApi.captureOrder({
-                payment_id: data.paymentID,
-                payer_id: data.payerID,
+                payment_id: orderId,
+                payer_id: data.payerID || '',
                 purchase_id: orderData.purchase_id,
             });
 
             if (response.data.purchase) {
-                navigate('/chat', { state: { message: 'Payment successful! You now have access to your plan.' } });
+                navigate('/account', { state: { success: true, purchase: response.data.purchase } });
             }
         } catch (err) {
-            setError(err.response?.data?.message || 'Payment failed. Please try again.');
+            const res = err.response?.data;
+            let msg = res?.message || 'Payment failed. Please try again.';
+            const detail = res?.paypal_message || res?.error?.details?.[0]?.description || res?.error?.message;
+            if (detail) {
+                msg += ` — ${detail}`;
+            }
+            setError(msg);
+        } finally {
+            setCapturing(false);
         }
     };
 
@@ -83,9 +117,19 @@ export default function Checkout() {
             <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12 pt-32">
                 <h1 className="text-4xl font-bold mb-8 bg-gradient-to-r from-white to-white/70 bg-clip-text text-transparent">Checkout</h1>
 
-                {error && (
-                    <div className="bg-red-500/10 border border-red-500/50 text-red-400 px-4 py-3 rounded-xl mb-6">
-                        {error}
+                {(error || capturing) && (
+                    <div className="mb-6 space-y-2">
+                        {capturing && (
+                            <div className="bg-blue-500/10 border border-blue-500/50 text-blue-400 px-4 py-3 rounded-xl flex items-center gap-3">
+                                <div className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                                Processing your payment...
+                            </div>
+                        )}
+                        {error && (
+                            <div className="bg-red-500/10 border border-red-500/50 text-red-400 px-4 py-3 rounded-xl">
+                                {error}
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -115,8 +159,8 @@ export default function Checkout() {
 
                     <Card>
                         <h2 className="text-2xl font-bold mb-4 text-white">Payment</h2>
-                        {paypalClientId ? (
-                            <PayPalScriptProvider options={{ clientId: paypalClientId }}>
+                        {paypalConfig.active && paypalConfig.clientId ? (
+                            <PayPalScriptProvider options={{ clientId: paypalConfig.clientId }}>
                                 <PayPalButtons
                                     createOrder={createOrder}
                                     onApprove={onApprove}
@@ -124,7 +168,11 @@ export default function Checkout() {
                                 />
                             </PayPalScriptProvider>
                         ) : (
-                            <div className="text-red-400">PayPal client ID not configured</div>
+                            <div className="text-amber-400">
+                                {paypalConfig.active
+                                    ? 'PayPal is not configured. Please contact support.'
+                                    : 'PayPal payments are currently unavailable. Please check back later.'}
+                            </div>
                         )}
                     </Card>
                 </div>

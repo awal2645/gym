@@ -36,9 +36,14 @@ return [
     ],
 
     'paypal' => [
-        'client_id' => env('PAYPAL_CLIENT_ID'),
-        'client_secret' => env('PAYPAL_CLIENT_SECRET'),
+        'client_id' => env('PAYPAL_MODE') === 'live'
+            ? env('PAYPAL_LIVE_CLIENT_ID')
+            : env('PAYPAL_SANDBOX_CLIENT_ID'),
+        'client_secret' => env('PAYPAL_MODE') === 'live'
+            ? env('PAYPAL_LIVE_SECRET')
+            : env('PAYPAL_SANDBOX_SECRET'),
         'mode' => env('PAYPAL_MODE', 'sandbox'), // sandbox or live
+        'active' => env('PAYPAL_ACTIVE', true),
     ],
 
     'google' => [

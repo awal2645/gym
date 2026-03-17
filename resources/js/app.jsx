@@ -34,6 +34,7 @@ import Checkout from './pages/Checkout';
 import Dashboard from './pages/Dashboard';
 import Chat from './pages/Chat';
 import Profile from './pages/Profile';
+import Account from './pages/Account';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminPlans from './pages/admin/AdminPlans';
 import AdminPurchases from './pages/admin/AdminPurchases';
@@ -214,6 +215,14 @@ function App() {
                         element={
                             <ProtectedRoute>
                                 <Profile />
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/account"
+                        element={
+                            <ProtectedRoute>
+                                <Account />
                             </ProtectedRoute>
                         }
                     />

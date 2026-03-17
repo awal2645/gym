@@ -29,9 +29,14 @@ class AdminPlanController extends Controller
             'description' => 'nullable|string',
             'features' => 'nullable|array',
             'active' => 'boolean',
+            'best_value' => 'boolean',
         ]);
 
         $plan = Plan::create($request->all());
+
+        if ($plan->best_value) {
+            Plan::where('id', '!=', $plan->id)->update(['best_value' => false]);
+        }
 
         return response()->json($plan, 201);
     }
@@ -49,9 +54,14 @@ class AdminPlanController extends Controller
             'description' => 'nullable|string',
             'features' => 'nullable|array',
             'active' => 'boolean',
+            'best_value' => 'boolean',
         ]);
 
         $plan->update($request->all());
+
+        if ($plan->best_value) {
+            Plan::where('id', '!=', $plan->id)->update(['best_value' => false]);
+        }
 
         return response()->json($plan);
     }

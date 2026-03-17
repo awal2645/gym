@@ -43,6 +43,10 @@ class CheckoutController extends Controller
      */
     public function createOrder(Request $request)
     {
+        if (!config('services.paypal.active', true)) {
+            return response()->json(['message' => 'PayPal payments are currently unavailable'], 503);
+        }
+
         $request->validate([
             'plan_id' => 'required|exists:plans,id',
         ]);
@@ -121,8 +125,8 @@ class CheckoutController extends Controller
     public function captureOrder(Request $request)
     {
         $request->validate([
-            'payment_id' => 'required',
-            'payer_id' => 'required',
+            'payment_id' => 'required|string',
+            'payer_id' => 'nullable|string',
             'purchase_id' => 'required|exists:purchases,id',
         ]);
 
@@ -133,14 +137,21 @@ class CheckoutController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
+        // Idempotency: if already completed, return success
+        if ($purchase->status === 'completed') {
+            return response()->json([
+                'message' => 'Payment successful',
+                'purchase' => $purchase->fresh()->load('plan'),
+            ]);
+        }
+
         try {
             $accessToken = $this->getPayPalAccessToken();
             $baseUrl = $this->getPayPalBaseUrl();
 
             $response = Http::withToken($accessToken)
-                ->withHeaders([
-                    'Content-Type' => 'application/json',
-                ])
+                ->withHeaders(['Content-Type' => 'application/json'])
+                ->withBody('{}', 'application/json')
                 ->post("{$baseUrl}/v2/checkout/orders/{$request->payment_id}/capture");
 
             if ($response->successful()) {
@@ -154,7 +165,7 @@ class CheckoutController extends Controller
 
                     return response()->json([
                         'message' => 'Payment successful',
-                        'purchase' => $purchase->load('plan'),
+                        'purchase' => $purchase->fresh()->load('plan'),
                     ]);
                 }
 
@@ -165,13 +176,81 @@ class CheckoutController extends Controller
                 ], 400);
             }
 
+            // If order already captured (PayPal auto-capture for some payment methods), mark as success
+            $errorBody = $response->json() ?? [];
+            $errorStr = json_encode($errorBody);
+            if ($response->status() === 422 || $response->status() === 400) {
+                if (str_contains(strtolower($errorStr), 'captured') ||
+                    str_contains(strtolower($errorStr), 'already') ||
+                    str_contains(strtolower($errorStr), 'completed')) {
+                    $purchase->update([
+                        'status' => 'completed',
+                        'paid_at' => $purchase->paid_at ?? now(),
+                    ]);
+
+                    return response()->json([
+                        'message' => 'Payment successful',
+                        'purchase' => $purchase->fresh()->load('plan'),
+                    ]);
+                }
+            }
+
+            // Try to get order status - maybe it was already captured (Pay Later, Card)
+            try {
+                $getResponse = Http::withToken($accessToken)
+                    ->get("{$baseUrl}/v2/checkout/orders/{$request->payment_id}");
+                if ($getResponse->successful()) {
+                    $orderData = $getResponse->json();
+                    if (($orderData['status'] ?? '') === 'COMPLETED') {
+                        $purchase->update([
+                            'status' => 'completed',
+                            'paid_at' => now(),
+                        ]);
+                        return response()->json([
+                            'message' => 'Payment successful',
+                            'purchase' => $purchase->fresh()->load('plan'),
+                        ]);
+                    }
+                    if (!empty($orderData['purchase_units'][0]['payments']['captures'][0]['status'])) {
+                        $captureStatus = $orderData['purchase_units'][0]['payments']['captures'][0]['status'];
+                        if ($captureStatus === 'COMPLETED') {
+                            $purchase->update([
+                                'status' => 'completed',
+                                'paid_at' => now(),
+                            ]);
+                            return response()->json([
+                                'message' => 'Payment successful',
+                                'purchase' => $purchase->fresh()->load('plan'),
+                            ]);
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {
+                // Ignore - we'll return the original error
+            }
+
             $purchase->update(['status' => 'failed']);
+
+            \Log::error('PayPal capture failed', [
+                'purchase_id' => $purchase->id,
+                'payment_id' => $request->payment_id,
+                'status' => $response->status(),
+                'response' => $errorBody,
+            ]);
+
+            $paypalMessage = $errorBody['details'][0]['description'] ?? $errorBody['message'] ?? null;
 
             return response()->json([
                 'message' => 'Error capturing payment',
-                'error' => $response->json(),
+                'error' => $errorBody,
+                'paypal_message' => $paypalMessage,
             ], 500);
         } catch (\Exception $e) {
+            \Log::error('PayPal capture error', [
+                'purchase_id' => $purchase->id,
+                'error' => $e->getMessage(),
+            ]);
+
             $purchase->update(['status' => 'failed']);
 
             return response()->json([
