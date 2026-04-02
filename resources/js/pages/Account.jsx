@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import Sidebar from '../components/Sidebar';
 import Card from '../components/Card';
@@ -9,9 +9,20 @@ import { purchasesApi } from '../api/purchases';
 export default function Account() {
     const navigate = useNavigate();
     const location = useLocation();
+    const [searchParams, setSearchParams] = useSearchParams();
     const [purchases, setPurchases] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [successMessage, setSuccessMessage] = useState(location.state?.success ? 'Payment successful! Your plan is now active.' : '');
+    const purchaseJustCompleted =
+        Boolean(location.state?.success) || searchParams.get('purchased') === '1';
+    const [successMessage, setSuccessMessage] = useState(
+        purchaseJustCompleted ? 'Payment successful! Your plan is now active.' : '',
+    );
+
+    useEffect(() => {
+        if (searchParams.get('purchased') === '1') {
+            setSearchParams({}, { replace: true });
+        }
+    }, [searchParams, setSearchParams]);
 
     useEffect(() => {
         if (successMessage) {

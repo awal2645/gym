@@ -251,7 +251,7 @@ export default function AdminPlans() {
                                 label="Plan Name"
                                 value={formData.name}
                                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                placeholder="e.g. Premium Plan"
+                                placeholder="e.g. Premium 🏆"
                                 required
                             />
                             <Input

@@ -12,6 +12,15 @@ class PlanSeeder extends Seeder
      */
     public function run(): void
     {
+        $planNames = [
+            'Basic Plan',
+            'Premium 🏆',
+            'Advanced Form Mastery',
+        ];
+
+        // Remove old plan rows that are no longer part of current seed data.
+        Plan::query()->whereNotIn('name', $planNames)->delete();
+
         Plan::updateOrCreate(
             ['name' => 'Basic Plan'],
             [
@@ -28,7 +37,7 @@ class PlanSeeder extends Seeder
         );
 
         Plan::updateOrCreate(
-            ['name' => 'Premium Plan'],
+            ['name' => 'Premium 🏆'],
             [
                 'price' => 59.99,
             'description' => 'Comprehensive training program with personalized support and advanced features.',

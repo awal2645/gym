@@ -115,4 +115,15 @@ return [
         'name' => env('MAIL_FROM_NAME', 'Example'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Admin notifications
+    |--------------------------------------------------------------------------
+    |
+    | New user signup notifications are sent to this address when set.
+    |
+    */
+
+    'admin_notification_address' => env('ADMIN_NOTIFICATION_EMAIL'),
+
 ];

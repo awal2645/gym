@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Services\EmailNotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -37,6 +38,10 @@ class AuthController extends Controller
             'password' => Hash::make($request->password),
             'role' => 'user',
         ]);
+
+        $emailService = app(EmailNotificationService::class);
+        $emailService->sendWelcomeEmail($user);
+        $emailService->notifyAdminsNewUser($user);
 
         $token = $user->createToken('auth_token')->plainTextToken;
 
@@ -134,6 +139,23 @@ class AuthController extends Controller
             'message' => 'Profile picture uploaded successfully',
             'user' => $user->fresh(),
         ]);
+    }
+
+    /**
+     * Update password while authenticated (profile).
+     */
+    public function updatePassword(Request $request)
+    {
+        $request->validate([
+            'current_password' => ['required', 'current_password'],
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
+        ]);
+
+        $request->user()->update([
+            'password' => Hash::make($request->password),
+        ]);
+
+        return response()->json(['message' => 'Password updated successfully']);
     }
 
     /**

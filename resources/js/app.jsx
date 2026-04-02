@@ -22,7 +22,7 @@ if (typeof window !== 'undefined') {
 
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useSearchParams } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Landing from './pages/Landing';
 import PricingPage from './pages/PricingPage';
@@ -84,8 +84,21 @@ class ErrorBoundary extends React.Component {
     }
 }
 
+/** Only allow same-origin relative paths (avoid open redirects). */
+function safeInternalRedirect(path) {
+    if (path == null || typeof path !== 'string') {
+        return null;
+    }
+    const p = path.trim();
+    if (!p.startsWith('/') || p.startsWith('//') || p.includes('://')) {
+        return null;
+    }
+    return p;
+}
+
 function ProtectedRoute({ children }) {
     const { user, loading } = useAuth();
+    const location = useLocation();
 
     if (loading) {
         return (
@@ -99,7 +112,9 @@ function ProtectedRoute({ children }) {
     }
 
     if (!user) {
-        return <Navigate to="/login" replace />;
+        const returnTo = `${location.pathname}${location.search}`;
+        const loginTo = `/login?redirect=${encodeURIComponent(returnTo)}`;
+        return <Navigate to={loginTo} replace state={{ from: location }} />;
     }
 
     return children;
@@ -128,6 +143,8 @@ function AdminRoute({ children }) {
 
 function GuestRoute({ children }) {
     const { user, loading } = useAuth();
+    const [searchParams] = useSearchParams();
+    const redirect = safeInternalRedirect(searchParams.get('redirect'));
 
     if (loading) {
         return (
@@ -141,7 +158,7 @@ function GuestRoute({ children }) {
     }
 
     if (user) {
-        return <Navigate to="/dashboard" replace />;
+        return <Navigate to={redirect || '/dashboard'} replace />;
     }
 
     return children;

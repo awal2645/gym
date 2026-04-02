@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
 import Input from '../components/Input';
@@ -14,6 +14,8 @@ export default function Register() {
     const [loading, setLoading] = useState(false);
     const { register } = useAuth();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const redirect = searchParams.get('redirect');
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -28,7 +30,11 @@ export default function Register() {
 
         try {
             const { user } = await register(name, email, password, passwordConfirmation);
-            navigate(user?.role === 'admin' ? '/admin' : '/chat');
+            if (redirect && user?.role !== 'admin') {
+                navigate(redirect);
+            } else {
+                navigate(user?.role === 'admin' ? '/admin' : '/chat');
+            }
         } catch (err) {
             const errors = err.response?.data?.errors;
             if (errors) {
@@ -51,7 +57,10 @@ export default function Register() {
                         <h2 className="text-3xl font-bold text-center bg-gradient-to-r from-white to-white/80 bg-clip-text text-transparent">Create Account</h2>
                         <p className="mt-2 text-center text-white/60">
                             Already have an account?{' '}
-                            <Link to="/login" className="text-blue-400 hover:text-blue-300 underline">
+                            <Link
+                                to={redirect ? `/login?redirect=${encodeURIComponent(redirect)}` : '/login'}
+                                className="text-blue-400 hover:text-blue-300 underline"
+                            >
                                 Login here
                             </Link>
                         </p>

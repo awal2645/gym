@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Plan;
 use App\Models\Purchase;
+use App\Services\EmailNotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 
@@ -36,6 +37,17 @@ class CheckoutController extends Controller
         return $mode === 'live' 
             ? 'https://api-m.paypal.com' 
             : 'https://api-m.sandbox.paypal.com';
+    }
+
+    private function purchaseSuccessResponse(Purchase $purchase): \Illuminate\Http\JsonResponse
+    {
+        $purchase = $purchase->fresh()->load('plan');
+        app(EmailNotificationService::class)->sendPurchaseConfirmation($purchase);
+
+        return response()->json([
+            'message' => 'Payment successful',
+            'purchase' => $purchase,
+        ]);
     }
 
     /**
@@ -127,14 +139,35 @@ class CheckoutController extends Controller
         $request->validate([
             'payment_id' => 'required|string',
             'payer_id' => 'nullable|string',
-            'purchase_id' => 'required|exists:purchases,id',
+            'purchase_id' => 'nullable|integer|exists:purchases,id',
         ]);
 
-        $purchase = Purchase::findOrFail($request->purchase_id);
+        $userId = $request->user()->id;
+        $paymentId = $request->payment_id;
 
-        // Verify purchase belongs to user
-        if ($purchase->user_id !== $request->user()->id) {
-            return response()->json(['message' => 'Unauthorized'], 403);
+        // Prefer PayPal order id (always matches the approved payment; fixes stale/wrong purchase_id from the client)
+        $purchase = Purchase::query()
+            ->where('paypal_order_id', $paymentId)
+            ->where('user_id', $userId)
+            ->first();
+
+        if (! $purchase && $request->filled('purchase_id')) {
+            $purchase = Purchase::query()
+                ->where('id', $request->purchase_id)
+                ->where('user_id', $userId)
+                ->first();
+        }
+
+        if (! $purchase) {
+            return response()->json([
+                'message' => 'We could not match this payment to your checkout. Please try again or contact support.',
+            ], 404);
+        }
+
+        if ($purchase->paypal_order_id && $purchase->paypal_order_id !== $paymentId) {
+            return response()->json([
+                'message' => 'This payment does not match the current order. Please start checkout again.',
+            ], 422);
         }
 
         // Idempotency: if already completed, return success
@@ -163,10 +196,7 @@ class CheckoutController extends Controller
                         'paid_at' => now(),
                     ]);
 
-                    return response()->json([
-                        'message' => 'Payment successful',
-                        'purchase' => $purchase->fresh()->load('plan'),
-                    ]);
+                    return $this->purchaseSuccessResponse($purchase);
                 }
 
                 $purchase->update(['status' => 'failed']);
@@ -188,10 +218,7 @@ class CheckoutController extends Controller
                         'paid_at' => $purchase->paid_at ?? now(),
                     ]);
 
-                    return response()->json([
-                        'message' => 'Payment successful',
-                        'purchase' => $purchase->fresh()->load('plan'),
-                    ]);
+                    return $this->purchaseSuccessResponse($purchase);
                 }
             }
 
@@ -206,10 +233,8 @@ class CheckoutController extends Controller
                             'status' => 'completed',
                             'paid_at' => now(),
                         ]);
-                        return response()->json([
-                            'message' => 'Payment successful',
-                            'purchase' => $purchase->fresh()->load('plan'),
-                        ]);
+
+                        return $this->purchaseSuccessResponse($purchase);
                     }
                     if (!empty($orderData['purchase_units'][0]['payments']['captures'][0]['status'])) {
                         $captureStatus = $orderData['purchase_units'][0]['payments']['captures'][0]['status'];
@@ -218,10 +243,8 @@ class CheckoutController extends Controller
                                 'status' => 'completed',
                                 'paid_at' => now(),
                             ]);
-                            return response()->json([
-                                'message' => 'Payment successful',
-                                'purchase' => $purchase->fresh()->load('plan'),
-                            ]);
+
+                            return $this->purchaseSuccessResponse($purchase);
                         }
                     }
                 }

@@ -21,6 +21,10 @@ export default function Profile() {
     const [googleLoading, setGoogleLoading] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [currentPassword, setCurrentPassword] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+    const [newPasswordConfirmation, setNewPasswordConfirmation] = useState('');
+    const [passwordLoading, setPasswordLoading] = useState(false);
 
     useEffect(() => {
         if (user) {
@@ -124,6 +128,37 @@ export default function Profile() {
             setError(err.response?.data?.message || 'Failed to connect Google Drive.');
         } finally {
             setGoogleLoading(false);
+        }
+    };
+
+    const handlePasswordChange = async (e) => {
+        e.preventDefault();
+        setError('');
+        setSuccess('');
+        setPasswordLoading(true);
+
+        try {
+            await authApi.updatePassword({
+                current_password: currentPassword,
+                password: newPassword,
+                password_confirmation: newPasswordConfirmation,
+            });
+            setSuccess('Password updated successfully.');
+            setCurrentPassword('');
+            setNewPassword('');
+            setNewPasswordConfirmation('');
+            setTimeout(() => setSuccess(''), 4000);
+        } catch (err) {
+            const errors = err.response?.data?.errors;
+            if (errors) {
+                const firstKey = Object.keys(errors)[0];
+                const firstError = errors[firstKey];
+                setError(Array.isArray(firstError) ? firstError[0] : firstError);
+            } else {
+                setError(err.response?.data?.message || 'Could not update password. Try again.');
+            }
+        } finally {
+            setPasswordLoading(false);
         }
     };
 
@@ -283,6 +318,47 @@ export default function Profile() {
                                                 Cancel
                                             </Button>
                                         </div>
+                                    </form>
+                                </Card>
+
+                                <Card className="mt-8">
+                                    <h2 className="text-2xl font-bold mb-4 text-white">Change password</h2>
+                                    <p className="text-white/60 text-sm mb-4">
+                                        Use your current password, then choose a new one (at least 8 characters).
+                                    </p>
+                                    <form onSubmit={handlePasswordChange}>
+                                        <Input
+                                            label="Current password"
+                                            type="password"
+                                            showPasswordToggle
+                                            value={currentPassword}
+                                            onChange={(e) => setCurrentPassword(e.target.value)}
+                                            required
+                                            autoComplete="current-password"
+                                        />
+                                        <Input
+                                            label="New password"
+                                            type="password"
+                                            showPasswordToggle
+                                            value={newPassword}
+                                            onChange={(e) => setNewPassword(e.target.value)}
+                                            required
+                                            minLength={8}
+                                            autoComplete="new-password"
+                                        />
+                                        <Input
+                                            label="Confirm new password"
+                                            type="password"
+                                            showPasswordToggle
+                                            value={newPasswordConfirmation}
+                                            onChange={(e) => setNewPasswordConfirmation(e.target.value)}
+                                            required
+                                            minLength={8}
+                                            autoComplete="new-password"
+                                        />
+                                        <Button type="submit" disabled={passwordLoading}>
+                                            {passwordLoading ? 'Updating...' : 'Update password'}
+                                        </Button>
                                     </form>
                                 </Card>
                             </div>

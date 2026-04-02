@@ -1,19 +1,18 @@
 import axios from 'axios';
 
-// Smart API URL detection: use VITE_API_URL if set, otherwise detect from current origin
+// VITE_API_URL wins. Vite dev (port 5173/5174) calls API on same hostname:8000 (fixes 127.0.0.1 vs localhost). Otherwise API is same origin + /api.
 const getApiUrl = () => {
-    // If VITE_API_URL is explicitly set, use it
     if (import.meta.env.VITE_API_URL) {
         return import.meta.env.VITE_API_URL;
     }
-    
-    // In production, use the same origin with /api
-    if (window.location.origin !== 'http://localhost:5173' && window.location.origin !== 'http://127.0.0.1:5173') {
-        return `${window.location.origin}/api`;
+
+    const { hostname, port, origin } = window.location;
+
+    if (port === '5173' || port === '5174') {
+        return `http://${hostname}:8000/api`;
     }
-    
-    // Default to localhost for development
-    return 'http://localhost:8000/api';
+
+    return `${origin}/api`;
 };
 
 const api = axios.create({

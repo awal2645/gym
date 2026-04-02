@@ -8,6 +8,7 @@ export const authApi = {
     forgotPassword: (data) => api.post('/forgot-password', data),
     resetPassword: (data) => api.post('/reset-password', data),
     updateProfile: (data) => api.put('/profile', data),
+    updatePassword: (data) => api.put('/profile/password', data),
     uploadProfilePicture: (file) => {
         const formData = new FormData();
         formData.append('profile_picture', file);
