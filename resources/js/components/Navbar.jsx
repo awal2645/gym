@@ -55,9 +55,10 @@ export default function Navbar() {
         };
     }, []);
 
-    const handleLogout = async () => {
-        await logout();
-        navigate('/login');
+    const handleLogout = () => {
+        setShowDropdown(false);
+        logout();
+        navigate('/login', { replace: true });
     };
 
     const getInitials = (name) => {

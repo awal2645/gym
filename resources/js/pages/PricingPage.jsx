@@ -2,12 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { plansApi } from '../api/plans';
 import { useAuth } from '../context/AuthContext';
-import {
-    STATIC_TIERS,
-    mergeStaticTiersWithPlans,
-    oldPriceForDiscount20,
-    priceDollarSuffix,
-} from '../data/pricingTiers';
+import { formatUsdPrice } from '../data/pricingTiers';
 
 export default function PricingPage() {
     const { isAuthenticated } = useAuth();
@@ -15,7 +10,10 @@ export default function PricingPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
-    const rows = useMemo(() => mergeStaticTiersWithPlans(apiPlans), [apiPlans]);
+    const plans = useMemo(
+        () => [...apiPlans].sort((a, b) => Number(a.price) - Number(b.price)),
+        [apiPlans],
+    );
 
     useEffect(() => {
         plansApi
@@ -54,12 +52,10 @@ export default function PricingPage() {
         );
     }
 
-    if (!rows) {
+    if (plans.length === 0) {
         return (
             <div className="flex min-h-screen items-center justify-center bg-black px-4 text-center text-sm text-white/75">
-                {apiPlans.length === 0
-                    ? 'No plans available at the moment.'
-                    : `Pricing needs exactly ${STATIC_TIERS.length} plans in the database (you have ${apiPlans.length}).`}
+                No plans available at the moment.
             </div>
         );
     }
@@ -79,9 +75,8 @@ export default function PricingPage() {
                 </div>
 
                 <div className="mt-6 grid grid-cols-1 gap-3 sm:mt-7 sm:gap-4 lg:mt-8 lg:grid-cols-3 lg:items-stretch lg:gap-3">
-                    {rows.map(({ title, lines, plan }, index) => {
-                        const isFeatured = index === 1;
-                        const oldPriceStr = isFeatured ? oldPriceForDiscount20(plan.price) : null;
+                    {plans.map((plan) => {
+                        const isFeatured = !!plan.best_value;
                         const checkoutPath = `/checkout/${plan.id}`;
                         const loginHref = `/login?redirect=${encodeURIComponent(checkoutPath)}`;
 
@@ -101,31 +96,49 @@ export default function PricingPage() {
 
                                 <div>
                                     <h3 className="text-center text-base font-semibold uppercase tracking-wide text-white sm:text-lg">
-                                        {title}
+                                        {plan.name}
                                     </h3>
 
-                                    {oldPriceStr && (
-                                        <div className="mt-2 flex flex-wrap items-baseline justify-center gap-x-1 text-center text-lg font-bold text-white/45 line-through sm:text-xl">
-                                            <span>{oldPriceStr}</span>
-                                            <span className="text-xs font-medium text-white/40">/ mo</span>
-                                        </div>
-                                    )}
+                                    {plan.description ? (
+                                        <p className="mt-2 text-center text-xs italic leading-snug text-white/65 sm:text-sm">
+                                            {plan.description}
+                                        </p>
+                                    ) : null}
 
                                     <div
                                         className={[
                                             'flex flex-wrap items-baseline justify-center gap-x-1 text-center font-extrabold leading-none text-white',
-                                            isFeatured ? 'mt-1 text-4xl sm:text-5xl' : 'mt-3 text-4xl sm:text-5xl',
+                                            plan.description ? 'mt-3 text-4xl sm:text-5xl' : 'mt-3 text-4xl sm:text-5xl',
                                         ].join(' ')}
                                     >
-                                        <span>{priceDollarSuffix(plan.price)}</span>
+                                        <span>{formatUsdPrice(plan.price)}</span>
                                         <span className="text-sm font-semibold text-white/60 sm:text-base">/ mo</span>
                                     </div>
 
-                                    <ul className="mt-4 list-disc space-y-1.5 pl-4 text-left text-xs leading-snug text-white/85 marker:text-white/70 sm:mt-5 sm:space-y-2 sm:pl-5 sm:text-sm">
-                                        {lines.map((line, fi) => (
-                                            <li key={`${plan.id}-${fi}`}>{line}</li>
-                                        ))}
-                                    </ul>
+                                    {plan.features?.length > 0 ? (
+                                        <ul className="mt-4 space-y-2 sm:mt-5">
+                                            {plan.features.map((line, fi) => (
+                                                <li
+                                                    key={`${plan.id}-${fi}`}
+                                                    className="flex items-start gap-2 text-left text-xs leading-snug text-white/85 sm:text-sm"
+                                                >
+                                                    <svg
+                                                        className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500"
+                                                        fill="currentColor"
+                                                        viewBox="0 0 20 20"
+                                                        aria-hidden
+                                                    >
+                                                        <path
+                                                            fillRule="evenodd"
+                                                            d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                                                            clipRule="evenodd"
+                                                        />
+                                                    </svg>
+                                                    <span>{line}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    ) : null}
                                 </div>
 
                                 <Link

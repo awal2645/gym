@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import api from '../api/axios';
 import { authApi } from '../api/auth';
 
 const AuthContext = createContext(null);
@@ -48,13 +49,15 @@ export function AuthProvider({ children }) {
     return res.data;
   };
 
-  const logout = async () => {
-    try {
-      await authApi.logout();
-    } finally {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      setUser(null);
+  const logout = () => {
+    const token = localStorage.getItem('token');
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setUser(null);
+    if (token) {
+      api
+        .post('/logout', {}, { headers: { Authorization: `Bearer ${token}` } })
+        .catch(() => {});
     }
   };
 

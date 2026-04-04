@@ -6,17 +6,12 @@ import Card from '../components/Card';
 import { plansApi } from '../api/plans';
 import { checkoutApi } from '../api/checkout';
 import { configApi } from '../api/config';
-import {
-    getStaticTierForPlan,
-    oldPriceForDiscount20,
-    priceDollarSuffix,
-} from '../data/pricingTiers';
+import { formatUsdPrice, planPricingDisplay } from '../data/pricingTiers';
 
 export default function Checkout() {
     const { planId } = useParams();
     const navigate = useNavigate();
     const [plan, setPlan] = useState(null);
-    const [allPlans, setAllPlans] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [capturing, setCapturing] = useState(false);
@@ -25,33 +20,24 @@ export default function Checkout() {
     const orderMetaRef = useRef(null);
     const [paypalConfig, setPaypalConfig] = useState({ clientId: '', active: false });
 
-    const staticTier = useMemo(
-        () => (plan && allPlans.length ? getStaticTierForPlan(plan, allPlans) : null),
-        [plan, allPlans],
-    );
-    const checkoutOldPriceStr =
-        staticTier?.isFeatured && plan ? oldPriceForDiscount20(plan.price) : null;
+    const display = useMemo(() => planPricingDisplay(plan), [plan]);
 
     useEffect(() => {
         let cancelled = false;
         setLoading(true);
         setError('');
-        Promise.all([
-            plansApi.getById(planId),
-            plansApi.getAll().catch(() => ({ data: [] })),
-        ])
-            .then(([byIdRes, allRes]) => {
+        plansApi
+            .getById(planId)
+            .then((byIdRes) => {
                 if (cancelled) {
                     return;
                 }
                 setPlan(byIdRes.data);
-                setAllPlans(allRes.data || []);
             })
             .catch(() => {
                 if (!cancelled) {
                     setError('Plan not found');
                     setPlan(null);
-                    setAllPlans([]);
                 }
             })
             .finally(() => {
@@ -179,64 +165,55 @@ export default function Checkout() {
                     <div
                         className={[
                             'relative flex flex-col rounded-xl border border-white/15 bg-zinc-950 px-4 py-5 shadow-lg sm:px-5 sm:py-6',
-                            staticTier?.isFeatured ? 'z-10 ring-2 ring-[#1877F2]' : '',
+                            display?.isFeatured ? 'z-10 ring-2 ring-[#1877F2]' : '',
                         ].join(' ')}
                     >
-                        {staticTier?.isFeatured && (
+                        {display?.isFeatured && (
                             <div className="absolute right-0 top-3 flex h-7 min-w-[88px] items-center justify-center bg-[#1877F2] px-2 text-[10px] font-extrabold tracking-wide text-white [clip-path:polygon(18%_0,100%_0,100%_100%,18%_100%,0_50%)] sm:top-4 sm:h-8 sm:min-w-[100px] sm:text-xs">
                                 Best Value
                             </div>
                         )}
 
-                        {staticTier && plan ? (
+                        {display && plan ? (
                             <>
                                 <h2 className="text-center text-base font-semibold uppercase tracking-wide text-white sm:text-lg">
-                                    {staticTier.title}
+                                    {display.title}
                                 </h2>
-                                {staticTier.isFeatured && checkoutOldPriceStr && (
-                                    <div className="mt-2 flex flex-wrap items-baseline justify-center gap-x-1 text-center text-lg font-bold text-white/45 line-through sm:text-xl">
-                                        <span>{checkoutOldPriceStr}</span>
-                                        <span className="text-xs font-medium text-white/40">/ mo</span>
-                                    </div>
-                                )}
+                                {plan.description ? (
+                                    <p className="mt-2 text-center text-sm text-white/60">{plan.description}</p>
+                                ) : null}
                                 <div
                                     className={[
                                         'flex flex-wrap items-baseline justify-center gap-x-1 text-center font-extrabold leading-none text-white',
-                                        staticTier.isFeatured ? 'mt-1 text-4xl sm:text-5xl' : 'mt-3 text-4xl sm:text-5xl',
+                                        display.isFeatured ? 'mt-3 text-4xl sm:text-5xl' : 'mt-3 text-4xl sm:text-5xl',
                                     ].join(' ')}
                                 >
-                                    <span>{priceDollarSuffix(plan.price)}</span>
+                                    <span>{formatUsdPrice(plan.price)}</span>
                                     <span className="text-sm font-semibold text-white/60 sm:text-base">/ mo</span>
                                 </div>
-                                <ul className="mt-4 list-disc space-y-1.5 pl-4 text-left text-xs leading-snug text-white/85 marker:text-white/70 sm:mt-5 sm:space-y-2 sm:pl-5 sm:text-sm">
-                                    {staticTier.lines.map((line, fi) => (
-                                        <li key={fi}>{line}</li>
-                                    ))}
-                                </ul>
+                                {display.lines.length > 0 ? (
+                                    <ul className="mt-4 space-y-2 text-left text-xs leading-snug text-white/85 sm:mt-5 sm:text-sm">
+                                        {display.lines.map((line, fi) => (
+                                            <li key={fi} className="flex items-start gap-2">
+                                                <svg
+                                                    className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500"
+                                                    fill="currentColor"
+                                                    viewBox="0 0 20 20"
+                                                    aria-hidden
+                                                >
+                                                    <path
+                                                        fillRule="evenodd"
+                                                        d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                                                        clipRule="evenodd"
+                                                    />
+                                                </svg>
+                                                <span>{line}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                ) : null}
                             </>
-                        ) : (
-                            <>
-                                <h2 className="mb-4 text-2xl font-bold text-white">{plan?.name}</h2>
-                                <p className="mb-6 text-white/60">{plan?.description}</p>
-                                <div className="mb-6 flex flex-wrap items-baseline gap-x-1">
-                                    <span className="text-4xl font-extrabold text-white">{priceDollarSuffix(plan?.price)}</span>
-                                    <span className="text-lg font-medium text-white/60">/ mo</span>
-                                </div>
-                                {plan?.features?.length > 0 && (
-                                    <div>
-                                        <h3 className="mb-3 font-semibold text-white">Features</h3>
-                                        <ul className="space-y-2">
-                                            {plan.features.map((feature, index) => (
-                                                <li key={index} className="flex items-start text-white/80">
-                                                    <span className="mr-2 mt-0.5 text-green-400">✓</span>
-                                                    <span>{feature}</span>
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    </div>
-                                )}
-                            </>
-                        )}
+                        ) : null}
                     </div>
 
                     <Card>
